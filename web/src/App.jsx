@@ -17,7 +17,6 @@ function saveLS(key, value) {
 }
 
 export default function App() {
-    // Минимальные “мозги” UI в одном месте
     const [status, setStatus] = useState(() => loadLS("ui.status", "online"));
 
     useEffect(() => saveLS("ui.status", status), [status]);
@@ -46,7 +45,7 @@ export default function App() {
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             </MapContainer>
 
-            {/* Мини-бар сверху (можно убрать позже, но сейчас полезно для дебага) */}
+            {/* Мини-бар сверху */}
             <div
                 style={{
                     position: "absolute",
@@ -92,7 +91,7 @@ export default function App() {
                 </button>
             </div>
 
-            {/* Кнопка перехода в ATC / обратно (угол) */}
+            {/* Кнопка перехода в ATC / обратно */}
             <button
                 onClick={active === "atc" ? goPilot : goATC}
                 style={{
@@ -120,7 +119,7 @@ export default function App() {
                     position: "absolute",
                     right: 12,
                     bottom: 12,
-                    width: 420,
+                    width: 520,
                     maxWidth: "calc(100vw - 24px)",
                     background: "rgba(255,255,255,0.95)",
                     borderRadius: 12,
@@ -151,12 +150,76 @@ function PilotScreen({ status }) {
 }
 
 function ATCScreen({ status }) {
+    const [tab, setTab] = useState("chat");
+
+    const tabBtn = (isActive) => ({
+        border: "none",
+        padding: "10px 12px",
+        borderRadius: 10,
+        cursor: "pointer",
+        fontWeight: 900,
+        background: isActive ? "rgba(20,20,20,0.85)" : "rgba(0,0,0,0.06)",
+        color: isActive ? "#fff" : "#000",
+    });
+
     return (
         <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>ATC</div>
-            <div style={{ fontSize: 13, opacity: 0.8 }}>
-                Панель диспетчера. Статус: {status}.
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>ATC</div>
+                <div style={{ fontSize: 13, opacity: 0.65 }}>Status: {status}</div>
             </div>
+
+            {/* ATC menu */}
+            <div style={{ display: "flex", gap: 8, marginTop: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                <button style={tabBtn(tab === "chat")} onClick={() => setTab("chat")}>
+                    Chat
+                </button>
+                <button style={tabBtn(tab === "requests")} onClick={() => setTab("requests")}>
+                    Requests
+                </button>
+                <button style={tabBtn(tab === "flights")} onClick={() => setTab("flights")}>
+                    Flights
+                </button>
+                <button style={tabBtn(tab === "settings")} onClick={() => setTab("settings")}>
+                    Settings
+                </button>
+            </div>
+
+            {tab === "chat" && (
+                <div>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>ATC Chat</div>
+                    <div style={{ fontSize: 13, opacity: 0.8 }}>
+                        Тут будет чат/лог ATC. Следующий шаг: список сообщений “ник: текст” + поле ввода.
+                    </div>
+                </div>
+            )}
+
+            {tab === "requests" && (
+                <div>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>Requests</div>
+                    <div style={{ fontSize: 13, opacity: 0.8 }}>
+                        Тут будут ATC-запросы (pushback, start, taxi, takeoff, landing…) + статусы ожидания/ответа по callsign.
+                    </div>
+                </div>
+            )}
+
+            {tab === "flights" && (
+                <div>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>Flights</div>
+                    <div style={{ fontSize: 13, opacity: 0.8 }}>
+                        Тут будет список активных рейсов и быстрый выбор.
+                    </div>
+                </div>
+            )}
+
+            {tab === "settings" && (
+                <div>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>Settings</div>
+                    <div style={{ fontSize: 13, opacity: 0.8 }}>
+                        Настройки ATC (например, частота обновления, фильтры, звук).
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
