@@ -154,6 +154,7 @@ function PilotScreen({ status }) {
 }
 
 function ATCScreen({ status }) {
+<<<<<<< HEAD
     const [tab, setTab] = useState("flights");
     const [hoveredTab, setHoveredTab] = useState(null);
     const [selectedFlightId, setSelectedFlightId] = useState("TEST001");
@@ -161,11 +162,19 @@ function ATCScreen({ status }) {
 
     const tabBtn = (isActive, isHovered) => ({
         border: "1px solid rgba(255,255,255,0.08)",
+=======
+    const [tab, setTab] = useState("requests");
+    const [hoveredTab, setHoveredTab] = useState(null);
+
+    const tabBtn = (isActive, isHovered) => ({
+        border: "1px solid rgba(0,0,0,0.08)",
+>>>>>>> origin/main
         padding: "10px 14px",
         borderRadius: 12,
         cursor: "pointer",
         fontWeight: 800,
         letterSpacing: "0.02em",
+<<<<<<< HEAD
         background: isActive ? "rgba(75,99,255,0.95)" : "rgba(12,18,28,0.9)",
         color: isActive ? "#f5f8ff" : "#cfd6e6",
         boxShadow: isActive
@@ -173,6 +182,48 @@ function ATCScreen({ status }) {
             : "0 4px 12px rgba(0,0,0,0.2)",
         transform: isHovered && !isActive ? "translateY(-1px)" : "translateY(0)",
         transition: "all 0.15s ease",
+=======
+        background: isActive ? "rgba(20,20,20,0.9)" : "rgba(255,255,255,0.9)",
+        color: isActive ? "#fff" : "#1e1e1e",
+        boxShadow: isActive
+            ? "0 6px 18px rgba(0,0,0,0.18)"
+            : "0 4px 12px rgba(0,0,0,0.06)",
+        transform: isHovered && !isActive ? "translateY(-1px)" : "translateY(0)",
+        transition: "all 0.15s ease",
+    });
+
+    const panelWrap = {
+        background: "rgba(12,12,12,0.02)",
+        border: "1px solid rgba(0,0,0,0.06)",
+        borderRadius: 14,
+        padding: 12,
+        display: "grid",
+        gap: 10,
+    };
+
+    const card = {
+        background: "#fff",
+        border: "1px solid rgba(0,0,0,0.06)",
+        borderRadius: 12,
+        padding: "12px 14px",
+        boxShadow: "0 6px 16px rgba(0,0,0,0.06)",
+    };
+
+    const chip = (tone) => ({
+        padding: "4px 8px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        background:
+            tone === "alert"
+                ? "rgba(255,74,74,0.12)"
+                : tone === "info"
+                ? "rgba(55,124,255,0.12)"
+                : "rgba(0,0,0,0.06)",
+        color: tone === "alert" ? "#b11212" : tone === "info" ? "#1846b1" : "#333",
+>>>>>>> origin/main
     });
 
     const panelWrap = {
@@ -258,6 +309,7 @@ function ATCScreen({ status }) {
     const selectedFlight = flights.find((flight) => flight.id === selectedFlightId) || flights[0];
 
     return (
+<<<<<<< HEAD
         <div
             style={{
                 background: "linear-gradient(135deg, rgba(8,12,20,0.98), rgba(14,20,34,0.98))",
@@ -270,6 +322,13 @@ function ATCScreen({ status }) {
                 <div style={{ fontWeight: 900, fontSize: 18 }}>Эскиз полета</div>
                 <div style={{ fontSize: 12, opacity: 0.65, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                     УВД: {status}
+=======
+        <div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10 }}>
+                <div style={{ fontWeight: 900, fontSize: 18 }}>ATC Console</div>
+                <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    Status: {status}
+>>>>>>> origin/main
                 </div>
             </div>
 
@@ -281,7 +340,11 @@ function ATCScreen({ status }) {
                     marginBottom: 12,
                     padding: 8,
                     borderRadius: 14,
+<<<<<<< HEAD
                     background: "rgba(10,14,22,0.9)",
+=======
+                    background: "rgba(0,0,0,0.04)",
+>>>>>>> origin/main
                     alignItems: "center",
                     flexWrap: "wrap",
                 }}
@@ -292,6 +355,7 @@ function ATCScreen({ status }) {
                     onMouseEnter={() => setHoveredTab("requests")}
                     onMouseLeave={() => setHoveredTab(null)}
                 >
+<<<<<<< HEAD
                     Запросы
                 </button>
                 <button
@@ -311,12 +375,37 @@ function ATCScreen({ status }) {
                     ВПП / Руление
                 </button>
                 <button
+=======
+                    Requests
+                </button>
+                <button
+                    style={tabBtn(tab === "flights", hoveredTab === "flights")}
+                    onClick={() => setTab("flights")}
+                    onMouseEnter={() => setHoveredTab("flights")}
+                    onMouseLeave={() => setHoveredTab(null)}
+                >
+                    Flights
+                </button>
+                <button
+                    style={tabBtn(tab === "ground", hoveredTab === "ground")}
+                    onClick={() => setTab("ground")}
+                    onMouseEnter={() => setHoveredTab("ground")}
+                    onMouseLeave={() => setHoveredTab(null)}
+                >
+                    Ground
+                </button>
+                <button
+>>>>>>> origin/main
                     style={tabBtn(tab === "settings", hoveredTab === "settings")}
                     onClick={() => setTab("settings")}
                     onMouseEnter={() => setHoveredTab("settings")}
                     onMouseLeave={() => setHoveredTab(null)}
                 >
+<<<<<<< HEAD
                     Настройки
+=======
+                    Settings
+>>>>>>> origin/main
                 </button>
             </div>
 
@@ -334,17 +423,30 @@ function ATCScreen({ status }) {
                 <div style={panelWrap}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 900, fontSize: 16 }}>Входящие запросы</div>
+=======
+                            <div style={{ fontWeight: 900, fontSize: 16 }}>Incoming Requests</div>
+>>>>>>> origin/main
                             <div style={{ fontSize: 12, opacity: 0.7 }}>
                                 Очередь по приоритету и статусам подтверждения.
                             </div>
                         </div>
+<<<<<<< HEAD
                         <div style={chip("alert")}>3 ожидают</div>
                     </div>
                     <div style={card}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                             <div style={{ fontWeight: 800 }}>UAE214 · Пушбек</div>
                             <div style={chip("info")}>Гейт B7</div>
+=======
+                        <div style={chip("alert")}>3 waiting</div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontWeight: 800 }}>UAE214 · Pushback</div>
+                            <div style={chip("info")}>Gate B7</div>
+>>>>>>> origin/main
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             Запрос на разрешение для pushback. Ожидает подтверждения диспетчера.
@@ -352,8 +454,13 @@ function ATCScreen({ status }) {
                     </div>
                     <div style={card}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 800 }}>RYR81Q · Запуск</div>
                             <div style={chip()}>Стоянка 24</div>
+=======
+                            <div style={{ fontWeight: 800 }}>RYR81Q · Start</div>
+                            <div style={chip()}>Stand 24</div>
+>>>>>>> origin/main
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             Запуск двигателей, требуется подтверждение в течение 2 минут.
@@ -361,8 +468,13 @@ function ATCScreen({ status }) {
                     </div>
                     <div style={card}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 800 }}>SVO902 · Руление</div>
                             <div style={chip("info")}>ВПП 30L</div>
+=======
+                            <div style={{ fontWeight: 800 }}>SVO902 · Taxi</div>
+                            <div style={chip("info")}>RWY 30L</div>
+>>>>>>> origin/main
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             Запрос на руление к исполнительному. Окно связи активное.
@@ -372,6 +484,7 @@ function ATCScreen({ status }) {
             )}
 
             {tab === "flights" && (
+<<<<<<< HEAD
                 <div style={{ display: "grid", gap: 12 }}>
                     <div
                         style={{
@@ -574,6 +687,42 @@ function ATCScreen({ status }) {
                                 </button>
                             </div>
                         )}
+=======
+                <div style={panelWrap}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                            <div style={{ fontWeight: 900, fontSize: 16 }}>Active Flights</div>
+                            <div style={{ fontSize: 12, opacity: 0.7 }}>Контроль полосы и точек ожидания.</div>
+                        </div>
+                        <div style={chip("info")}>12 in sector</div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontWeight: 800 }}>AIC402 · Approach</div>
+                            <div style={chip()}>FL120</div>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            ETA 06:14Z · Vectors to ILS 30L · Next check: 2 min.
+                        </div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontWeight: 800 }}>ETD78 · Departure</div>
+                            <div style={chip("info")}>Gate C2</div>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Ready for taxi · Clearance pending · Assigned SID: DAS1A.
+                        </div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontWeight: 800 }}>THY9D · Enroute</div>
+                            <div style={chip()}>FL320</div>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Passing waypoint LAGOS · Hand-off in 4 min.
+                        </div>
+>>>>>>> origin/main
                     </div>
                 </div>
             )}
@@ -582,11 +731,16 @@ function ATCScreen({ status }) {
                 <div style={panelWrap}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 900, fontSize: 16 }}>ВПП и руление</div>
+=======
+                            <div style={{ fontWeight: 900, fontSize: 16 }}>Runway / Taxi</div>
+>>>>>>> origin/main
                             <div style={{ fontSize: 12, opacity: 0.7 }}>
                                 Назначения полос, точки ожидания, маршруты руления.
                             </div>
                         </div>
+<<<<<<< HEAD
                         <div style={chip()}>ВПП 30L активна</div>
                     </div>
                     <div style={card}>
@@ -596,24 +750,51 @@ function ATCScreen({ status }) {
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             Следующий борт через 02:30 · Освобождение по B3 · Ветер 310/12.
+=======
+                        <div style={chip()}>RWY 30L active</div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontWeight: 800 }}>Runway 30L</div>
+                            <div style={chip("info")}>Landing</div>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Next arrival in 02:30 · Vacate via B3 · Winds 310/12.
+>>>>>>> origin/main
                         </div>
                     </div>
                     <div style={card}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 800 }}>Поток руления</div>
                             <div style={chip()}>Alpha / Bravo</div>
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             Горячие точки: A4 пересечение · Ограничено из-за работ.
+=======
+                            <div style={{ fontWeight: 800 }}>Taxi Flow</div>
+                            <div style={chip()}>Alpha / Bravo</div>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Hotspots: A4 intersection · Limited crossing due to maintenance.
+>>>>>>> origin/main
                         </div>
                     </div>
                     <div style={card}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 800 }}>Точки ожидания</div>
                             <div style={chip("alert")}>2 заняты</div>
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             B1: UAE214 · C3: SVO902 · Контроль интервалов.
+=======
+                            <div style={{ fontWeight: 800 }}>Hold Points</div>
+                            <div style={chip("alert")}>2 occupied</div>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            B1: UAE214 · C3: SVO902 · Monitor spacing.
+>>>>>>> origin/main
                         </div>
                     </div>
                 </div>
@@ -623,6 +804,7 @@ function ATCScreen({ status }) {
                 <div style={panelWrap}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
+<<<<<<< HEAD
                             <div style={{ fontWeight: 900, fontSize: 16 }}>Настройки ATC</div>
                             <div style={{ fontSize: 12, opacity: 0.7 }}>Параметры рабочей станции диспетчера.</div>
                         </div>
@@ -644,6 +826,29 @@ function ATCScreen({ status }) {
                         <div style={{ fontWeight: 800, marginBottom: 6 }}>Частота обновления</div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                             Радар: 2 сек · Наземные: 1 сек · Сеть: стабильная.
+=======
+                            <div style={{ fontWeight: 900, fontSize: 16 }}>ATC Settings</div>
+                            <div style={{ fontSize: 12, opacity: 0.7 }}>Параметры рабочей станции диспетчера.</div>
+                        </div>
+                        <div style={chip("info")}>Profile: Tower</div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Notifications</div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Звук запросов: Medium · Alerts: Runway incursion · Auto-ack disabled.
+                        </div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Filters</div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Показывать только: IFR, arrivals within 50 NM, departures within 10 NM.
+                        </div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Refresh Rate</div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            Radar update: 2 sec · Surface updates: 1 sec · Network: stable.
+>>>>>>> origin/main
                         </div>
                     </div>
                 </div>
