@@ -154,7 +154,8 @@ function PilotScreen({ status }) {
 }
 
 function ATCScreen({ status }) {
-<<<<<<< HEAD
+
+    HEAD
     const [tab, setTab] = useState("flights");
     const [hoveredTab, setHoveredTab] = useState(null);
     const [selectedFlightId, setSelectedFlightId] = useState("TEST001");
