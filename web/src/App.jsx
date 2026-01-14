@@ -155,36 +155,36 @@ function ATCScreen({ status }) {
     const [selectedFlightId, setSelectedFlightId] = useState("TEST001");
 
     const tabBtn = (isActive, isHovered) => ({
-        border: "1px solid rgba(0,0,0,0.08)",
+        border: "1px solid rgba(255,255,255,0.08)",
         padding: "10px 14px",
         borderRadius: 12,
         cursor: "pointer",
         fontWeight: 800,
         letterSpacing: "0.02em",
-        background: isActive ? "rgba(20,20,20,0.9)" : "rgba(255,255,255,0.9)",
-        color: isActive ? "#fff" : "#1e1e1e",
+        background: isActive ? "rgba(75,99,255,0.95)" : "rgba(12,18,28,0.9)",
+        color: isActive ? "#f5f8ff" : "#cfd6e6",
         boxShadow: isActive
-            ? "0 6px 18px rgba(0,0,0,0.18)"
-            : "0 4px 12px rgba(0,0,0,0.06)",
+            ? "0 6px 18px rgba(19,48,120,0.35)"
+            : "0 4px 12px rgba(0,0,0,0.2)",
         transform: isHovered && !isActive ? "translateY(-1px)" : "translateY(0)",
         transition: "all 0.15s ease",
     });
 
     const panelWrap = {
-        background: "rgba(12,12,12,0.02)",
-        border: "1px solid rgba(0,0,0,0.06)",
-        borderRadius: 14,
+        background: "rgba(12,18,28,0.92)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16,
         padding: 12,
         display: "grid",
         gap: 10,
     };
 
     const card = {
-        background: "#fff",
-        border: "1px solid rgba(0,0,0,0.06)",
-        borderRadius: 12,
+        background: "rgba(18,25,38,0.9)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 14,
         padding: "12px 14px",
-        boxShadow: "0 6px 16px rgba(0,0,0,0.06)",
+        boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
     };
 
     const chip = (tone) => ({
@@ -196,11 +196,11 @@ function ATCScreen({ status }) {
         textTransform: "uppercase",
         background:
             tone === "alert"
-                ? "rgba(255,74,74,0.12)"
+                ? "rgba(255,99,99,0.2)"
                 : tone === "info"
-                ? "rgba(55,124,255,0.12)"
-                : "rgba(0,0,0,0.06)",
-        color: tone === "alert" ? "#b11212" : tone === "info" ? "#1846b1" : "#333",
+                ? "rgba(82,146,255,0.2)"
+                : "rgba(255,255,255,0.08)",
+        color: tone === "alert" ? "#ffb3b3" : tone === "info" ? "#a6c7ff" : "#cfd6e6",
     });
 
     const flights = [
@@ -253,11 +253,18 @@ function ATCScreen({ status }) {
     const selectedFlight = flights.find((flight) => flight.id === selectedFlightId) || flights[0];
 
     return (
-        <div>
+        <div
+            style={{
+                background: "linear-gradient(135deg, rgba(8,12,20,0.98), rgba(14,20,34,0.98))",
+                borderRadius: 16,
+                padding: 14,
+                color: "#e6ecf8",
+            }}
+        >
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10 }}>
-                <div style={{ fontWeight: 900, fontSize: 18 }}>Панель ATC</div>
-                <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    Статус: {status}
+                <div style={{ fontWeight: 900, fontSize: 18 }}>Эскиз полета</div>
+                <div style={{ fontSize: 12, opacity: 0.65, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    УВД: {status}
                 </div>
             </div>
 
@@ -269,7 +276,7 @@ function ATCScreen({ status }) {
                     marginBottom: 12,
                     padding: 8,
                     borderRadius: 14,
-                    background: "rgba(0,0,0,0.04)",
+                    background: "rgba(10,14,22,0.9)",
                     alignItems: "center",
                     flexWrap: "wrap",
                 }}
@@ -360,145 +367,177 @@ function ATCScreen({ status }) {
             )}
 
             {tab === "flights" && (
-                <div
-                    style={{
-                        display: "grid",
-                        gridTemplateColumns: "200px minmax(0, 1fr) 220px",
-                        gap: 12,
-                    }}
-                >
-                    <div style={{ ...panelWrap, padding: 10 }}>
-                        <div style={{ fontWeight: 900, fontSize: 14 }}>Список рейсов</div>
+                <div style={{ display: "grid", gap: 12 }}>
+                    <div
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            background: "rgba(12,18,28,0.95)",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                        }}
+                    >
+                        <div style={{ fontWeight: 800 }}>Поле ввода</div>
                         <input
-                            placeholder="Поиск (позывной/маршрут)"
+                            placeholder='Ввод строки: "Ник: сообщение"'
                             style={{
-                                border: "1px solid rgba(0,0,0,0.1)",
-                                borderRadius: 10,
-                                padding: "8px 10px",
+                                flex: 1,
+                                border: "1px solid rgba(255,255,255,0.08)",
+                                borderRadius: 12,
+                                padding: "8px 12px",
                                 fontSize: 12,
+                                background: "rgba(10,14,22,0.9)",
+                                color: "#e6ecf8",
                             }}
                         />
-                        <div style={{ display: "grid", gap: 8 }}>
-                            {flights.map((flight) => {
-                                const isActive = flight.id === selectedFlightId;
-                                return (
-                                    <button
-                                        key={flight.id}
-                                        onClick={() => setSelectedFlightId(flight.id)}
-                                        style={{
-                                            textAlign: "left",
-                                            border: "1px solid rgba(0,0,0,0.08)",
-                                            borderRadius: 12,
-                                            padding: "10px 10px",
-                                            background: isActive ? "rgba(20,20,20,0.9)" : "#fff",
-                                            color: isActive ? "#fff" : "#1e1e1e",
-                                            cursor: "pointer",
-                                            boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
-                                        }}
-                                    >
-                                        <div style={{ fontWeight: 800 }}>{flight.id}</div>
-                                        <div style={{ fontSize: 11, opacity: 0.7 }}>{flight.route}</div>
-                                        <div style={{ fontSize: 11, opacity: 0.7 }}>{flight.status}</div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                        <button style={tabBtn(true, false)}>Приём внутрь</button>
+                        <button style={tabBtn(false, false)}>+ Рейс</button>
+                        <button style={tabBtn(false, false)}>Перезагрузить</button>
                     </div>
 
-                    <div style={panelWrap}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                                <div style={{ fontWeight: 900, fontSize: 16 }}>Карта сектора</div>
-                                <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                    Заглушка карты, будет подключена к реальным данным.
-                                </div>
+                    <div
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "220px minmax(0, 1fr) 260px",
+                            gap: 12,
+                        }}
+                    >
+                        <div style={{ ...panelWrap, padding: 10 }}>
+                            <div style={{ fontWeight: 900, fontSize: 14 }}>Список рейсов</div>
+                            <input
+                                placeholder="Поиск (позывной/статус/ВПП...)"
+                                style={{
+                                    border: "1px solid rgba(255,255,255,0.08)",
+                                    borderRadius: 12,
+                                    padding: "8px 10px",
+                                    fontSize: 12,
+                                    background: "rgba(10,14,22,0.9)",
+                                    color: "#e6ecf8",
+                                }}
+                            />
+                            <div style={{ display: "grid", gap: 8 }}>
+                                {flights.map((flight) => {
+                                    const isActive = flight.id === selectedFlightId;
+                                    return (
+                                        <button
+                                            key={flight.id}
+                                            onClick={() => setSelectedFlightId(flight.id)}
+                                            style={{
+                                                textAlign: "left",
+                                                border: "1px solid rgba(255,255,255,0.08)",
+                                                borderRadius: 12,
+                                                padding: "10px 10px",
+                                                background: isActive ? "rgba(75,99,255,0.9)" : "rgba(12,18,28,0.9)",
+                                                color: "#e6ecf8",
+                                                cursor: "pointer",
+                                                boxShadow: "0 6px 14px rgba(0,0,0,0.35)",
+                                            }}
+                                        >
+                                            <div style={{ fontWeight: 800 }}>{flight.id}</div>
+                                            <div style={{ fontSize: 11, opacity: 0.75 }}>{flight.route}</div>
+                                            <div style={{ fontSize: 11, opacity: 0.75 }}>{flight.status}</div>
+                                        </button>
+                                    );
+                                })}
                             </div>
-                            <div style={chip("info")}>12 в секторе</div>
                         </div>
-                        <div
-                            style={{
-                                ...card,
-                                minHeight: 220,
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                textAlign: "center",
-                                color: "#445",
-                                background: "linear-gradient(140deg, #f5f7fb 0%, #eef1f7 100%)",
-                            }}
-                        >
-                            <div style={{ fontWeight: 800, marginBottom: 6 }}>Карта (заглушка)</div>
-                            <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                Подключите реальный слой сюда. Пока отображается описание сектора.
-                            </div>
-                        </div>
-                    </div>
 
-                    <div style={panelWrap}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                                <div style={{ fontWeight: 900, fontSize: 16 }}>Управление рейсом</div>
-                                <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                    Детали открываются при выборе рейса.
+                        <div style={panelWrap}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div>
+                                    <div style={{ fontWeight: 900, fontSize: 16 }}>Ожидают ответ</div>
+                                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                        Ожидают запросов (самые свежие сверху).
+                                    </div>
                                 </div>
+                                <div style={chip("info")}>нет ожидающих</div>
                             </div>
-                            <div style={chip("info")}>Активный</div>
-                        </div>
-                        {selectedFlight ? (
-                            <>
-                                <div style={card}>
-                                    <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>Рейс</span>
-                                            <strong>{selectedFlight.id}</strong>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>Статус</span>
-                                            <span>{selectedFlight.status}</span>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>Фаза</span>
-                                            <span>{selectedFlight.phase}</span>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>Маршрут</span>
-                                            <span>{selectedFlight.route}</span>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>ВПП</span>
-                                            <span>{selectedFlight.runway}</span>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>FL / Alt</span>
-                                            <span>{selectedFlight.altitude}</span>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>ETA</span>
-                                            <span>{selectedFlight.eta}</span>
-                                        </div>
-                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ opacity: 0.6 }}>Последний</span>
-                                            <span>{selectedFlight.last}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div style={card}>
-                                    <div style={{ fontWeight: 800, marginBottom: 6 }}>Действия</div>
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                        <div style={chip("info")}>Разрешить руление</div>
-                                        <div style={chip()}>Вызвать экипаж</div>
-                                        <div style={chip("alert")}>Удерживать</div>
-                                    </div>
-                                </div>
-                            </>
-                        ) : (
+                            <div style={{ ...card, minHeight: 180, color: "#a7b3c9" }}>
+                                Нет ожидающих запросов для текущего сектора.
+                            </div>
                             <div style={card}>
+                                <div style={{ fontWeight: 800, marginBottom: 6 }}>Карта (пока заглушка)</div>
                                 <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                    Выберите рейс слева, чтобы открыть карточку управления.
+                                    Сейчас это заглушка. Твою карту можно подключить сюда.
                                 </div>
                             </div>
-                        )}
+                        </div>
+
+                        <div style={panelWrap}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div>
+                                    <div style={{ fontWeight: 900, fontSize: 16 }}>Информация о рейсе</div>
+                                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                        Управление выбранным рейсом.
+                                    </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <button style={tabBtn(false, false)}>Редактировать</button>
+                                    <button style={tabBtn(false, false)}>Удалить</button>
+                                </div>
+                            </div>
+                            {selectedFlight ? (
+                                <>
+                                    <div style={card}>
+                                        <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>Полёт</span>
+                                                <strong>{selectedFlight.id}</strong>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>Статус</span>
+                                                <span>{selectedFlight.status}</span>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>Фаза</span>
+                                                <span>{selectedFlight.phase}</span>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>Маршрут</span>
+                                                <span>{selectedFlight.route}</span>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>Взлётная полоса</span>
+                                                <span>{selectedFlight.runway}</span>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>FL / Alt</span>
+                                                <span>{selectedFlight.altitude}</span>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>ETA</span>
+                                                <span>{selectedFlight.eta}</span>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ opacity: 0.6 }}>Последний</span>
+                                                <span>{selectedFlight.last}</span>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                                            <div style={chip("alert")}>Ожидает 0</div>
+                                            <div style={chip()}>UNANS 0</div>
+                                            <div style={chip()}>STBY 0</div>
+                                        </div>
+                                    </div>
+                                    <div style={card}>
+                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Последние запросы</div>
+                                        <div style={{ fontSize: 12, opacity: 0.7 }}>Нет запросов по этому рейсу.</div>
+                                    </div>
+                                    <div style={card}>
+                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Предупреждение</div>
+                                        <div style={{ fontSize: 12, opacity: 0.7 }}>Нет оповещений.</div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={card}>
+                                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                        Выберите рейс слева, чтобы открыть карточку управления.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
