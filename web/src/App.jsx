@@ -117,10 +117,14 @@ export default function App() {
             <div
                 style={{
                     position: "absolute",
-                    right: 12,
-                    bottom: 12,
-                    width: 520,
-                    maxWidth: "calc(100vw - 24px)",
+                    right: active === "atc" ? 12 : 12,
+                    bottom: active === "atc" ? 12 : 12,
+                    left: active === "atc" ? 12 : "auto",
+                    top: active === "atc" ? 12 : "auto",
+                    width: active === "atc" ? "auto" : 520,
+                    height: active === "atc" ? "auto" : "auto",
+                    maxWidth: active === "atc" ? "calc(100vw - 24px)" : "calc(100vw - 24px)",
+                    maxHeight: active === "atc" ? "calc(100vh - 24px)" : "auto",
                     background: "rgba(255,255,255,0.95)",
                     borderRadius: 12,
                     padding: 12,
@@ -153,6 +157,7 @@ function ATCScreen({ status }) {
     const [tab, setTab] = useState("flights");
     const [hoveredTab, setHoveredTab] = useState(null);
     const [selectedFlightId, setSelectedFlightId] = useState("TEST001");
+    const [showFlightPanel, setShowFlightPanel] = useState(true);
 
     const tabBtn = (isActive, isHovered) => ({
         border: "1px solid rgba(255,255,255,0.08)",
@@ -400,7 +405,9 @@ function ATCScreen({ status }) {
                     <div
                         style={{
                             display: "grid",
-                            gridTemplateColumns: "220px minmax(0, 1fr) 260px",
+                            gridTemplateColumns: showFlightPanel
+                                ? "220px minmax(0, 1fr) 260px"
+                                : "220px minmax(0, 1fr)",
                             gap: 12,
                         }}
                     >
@@ -447,97 +454,126 @@ function ATCScreen({ status }) {
                         <div style={panelWrap}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <div>
-                                    <div style={{ fontWeight: 900, fontSize: 16 }}>Ожидают ответ</div>
+                                    <div style={{ fontWeight: 900, fontSize: 16 }}>Карта сектора</div>
                                     <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                        Ожидают запросов (самые свежие сверху).
+                                        Основная карта по центру, рабочее поле диспетчера.
                                     </div>
                                 </div>
-                                <div style={chip("info")}>нет ожидающих</div>
-                            </div>
-                            <div style={{ ...card, minHeight: 180, color: "#a7b3c9" }}>
-                                Нет ожидающих запросов для текущего сектора.
+                                <div style={chip("info")}>12 в секторе</div>
                             </div>
                             <div style={card}>
-                                <div style={{ fontWeight: 800, marginBottom: 6 }}>Карта (пока заглушка)</div>
+                                <div
+                                    style={{
+                                        minHeight: 260,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        textAlign: "center",
+                                        fontSize: 12,
+                                        color: "#a7b3c9",
+                                    }}
+                                >
+                                    Карта (заглушка). Здесь будет главный обзорный экран.
+                                </div>
+                            </div>
+                            <div style={card}>
+                                <div style={{ fontWeight: 800, marginBottom: 6 }}>Ожидают ответ</div>
                                 <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                    Сейчас это заглушка. Твою карту можно подключить сюда.
+                                    Нет ожидающих запросов для текущего сектора.
                                 </div>
                             </div>
                         </div>
 
-                        <div style={panelWrap}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div>
-                                    <div style={{ fontWeight: 900, fontSize: 16 }}>Информация о рейсе</div>
-                                    <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                        Управление выбранным рейсом.
+                        {showFlightPanel && (
+                            <div style={panelWrap}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <div>
+                                        <div style={{ fontWeight: 900, fontSize: 16 }}>Информация о рейсе</div>
+                                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                            Управление выбранным рейсом.
+                                        </div>
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                        <button style={tabBtn(false, false)}>Редактировать</button>
+                                        <button style={tabBtn(false, false)}>Удалить</button>
+                                        <button
+                                            style={tabBtn(false, false)}
+                                            onClick={() => setShowFlightPanel(false)}
+                                        >
+                                            Скрыть
+                                        </button>
                                     </div>
                                 </div>
-                                <div style={{ display: "flex", gap: 6 }}>
-                                    <button style={tabBtn(false, false)}>Редактировать</button>
-                                    <button style={tabBtn(false, false)}>Удалить</button>
-                                </div>
+                                {selectedFlight ? (
+                                    <>
+                                        <div style={card}>
+                                            <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>Полёт</span>
+                                                    <strong>{selectedFlight.id}</strong>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>Статус</span>
+                                                    <span>{selectedFlight.status}</span>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>Фаза</span>
+                                                    <span>{selectedFlight.phase}</span>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>Маршрут</span>
+                                                    <span>{selectedFlight.route}</span>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>Взлётная полоса</span>
+                                                    <span>{selectedFlight.runway}</span>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>FL / Alt</span>
+                                                    <span>{selectedFlight.altitude}</span>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>ETA</span>
+                                                    <span>{selectedFlight.eta}</span>
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span style={{ opacity: 0.6 }}>Последний</span>
+                                                    <span>{selectedFlight.last}</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                                                <div style={chip("alert")}>Ожидает 0</div>
+                                                <div style={chip()}>UNANS 0</div>
+                                                <div style={chip()}>STBY 0</div>
+                                            </div>
+                                        </div>
+                                        <div style={card}>
+                                            <div style={{ fontWeight: 800, marginBottom: 6 }}>Последние запросы</div>
+                                            <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                                Нет запросов по этому рейсу.
+                                            </div>
+                                        </div>
+                                        <div style={card}>
+                                            <div style={{ fontWeight: 800, marginBottom: 6 }}>Предупреждение</div>
+                                            <div style={{ fontSize: 12, opacity: 0.7 }}>Нет оповещений.</div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div style={card}>
+                                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                            Выберите рейс слева, чтобы открыть карточку управления.
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            {selectedFlight ? (
-                                <>
-                                    <div style={card}>
-                                        <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>Полёт</span>
-                                                <strong>{selectedFlight.id}</strong>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>Статус</span>
-                                                <span>{selectedFlight.status}</span>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>Фаза</span>
-                                                <span>{selectedFlight.phase}</span>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>Маршрут</span>
-                                                <span>{selectedFlight.route}</span>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>Взлётная полоса</span>
-                                                <span>{selectedFlight.runway}</span>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>FL / Alt</span>
-                                                <span>{selectedFlight.altitude}</span>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>ETA</span>
-                                                <span>{selectedFlight.eta}</span>
-                                            </div>
-                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                <span style={{ opacity: 0.6 }}>Последний</span>
-                                                <span>{selectedFlight.last}</span>
-                                            </div>
-                                        </div>
-                                        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                                            <div style={chip("alert")}>Ожидает 0</div>
-                                            <div style={chip()}>UNANS 0</div>
-                                            <div style={chip()}>STBY 0</div>
-                                        </div>
-                                    </div>
-                                    <div style={card}>
-                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Последние запросы</div>
-                                        <div style={{ fontSize: 12, opacity: 0.7 }}>Нет запросов по этому рейсу.</div>
-                                    </div>
-                                    <div style={card}>
-                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Предупреждение</div>
-                                        <div style={{ fontSize: 12, opacity: 0.7 }}>Нет оповещений.</div>
-                                    </div>
-                                </>
-                            ) : (
-                                <div style={card}>
-                                    <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                        Выберите рейс слева, чтобы открыть карточку управления.
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        )}
+                        {!showFlightPanel && (
+                            <div style={{ display: "flex", justifyContent: "flex-end", gridColumn: "2 / -1" }}>
+                                <button style={tabBtn(false, false)} onClick={() => setShowFlightPanel(true)}>
+                                    Показать панель рейса
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
