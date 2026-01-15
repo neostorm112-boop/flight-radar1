@@ -1410,6 +1410,16 @@ app.post("/logs/events", requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
+const webDistPath = path.join(__dirname, "..", "web", "dist");
+if (fs.existsSync(webDistPath)) {
+    app.use(express.static(webDistPath));
+    app.get("*", (req, res) => {
+        res.sendFile(path.join(webDistPath, "index.html"));
+    });
+} else {
+    console.warn("web/dist not found. Build frontend with `npm run build`.");
+}
+
 app.listen(PORT, () => {
     console.log(`Server listening on http://localhost:${PORT}`);
 });

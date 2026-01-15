@@ -1,0 +1,8 @@
+{
+  "name": "flight-radar",
+  "private": true,
+  "scripts": {
+    "build": "npm install --prefix server && npm install --prefix web && npm run --prefix web build",
+    "start": "node server/server.js"
+  }
+}
