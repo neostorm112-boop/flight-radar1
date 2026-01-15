@@ -15,3 +15,5 @@
 # Runtime data (keep airports dataset)
 /server/data/*.json
 !/server/data/airports.json
+!/server/data/flights.json
+!/server/data/users.json

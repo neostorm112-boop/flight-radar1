@@ -1,0 +1,23 @@
+[
+  {
+    "id": "f8f9a8e7-bee7-43aa-8bc1-8ac396e56686",
+    "username": "atc1",
+    "pinHash": "b68251182393177e487496f407106f4039844962dc5c3097958721601a0d9698",
+    "createdAt": 1768486236544,
+    "role": "dispatcher"
+  },
+  {
+    "id": "5926d64a-c12d-46be-bada-f1b00d4b4605",
+    "username": "atc2",
+    "pinHash": "b68251182393177e487496f407106f4039844962dc5c3097958721601a0d9698",
+    "createdAt": 1768500736102,
+    "role": "dispatcher"
+  },
+  {
+    "id": "efc7376b-a333-4b18-abc9-bdb4389f8ad6",
+    "username": "admin",
+    "pinHash": "9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0",
+    "role": "admin",
+    "createdAt": 1768504516382
+  }
+]
