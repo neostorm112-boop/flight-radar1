@@ -1,0 +1,17 @@
+.DS_Store
+.idea
+
+# Root lockfile should not exist here; keep subproject lockfiles tracked.
+/package-lock.json
+
+# Dependencies/build output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+
+# Logs
+*.log
+
+# Runtime data (keep airports dataset)
+/server/data/*.json
+!/server/data/airports.json
