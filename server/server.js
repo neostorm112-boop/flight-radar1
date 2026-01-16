@@ -93,6 +93,14 @@ const FLIGHT_PHASES = [
     "Руление к гейту",
     "На стоянке / Завершён",
 ];
+const FLIGHT_MODES = ["SCHEDULED", "LIVE", "ESTIMATED", "FROZEN", "COMPLETED"];
+const AIRCRAFT_PROFILES = {
+    NARROWBODY: { cruiseSpeedKts: 440, cruiseAltitudeFt: 35000 },
+    WIDEBODY: { cruiseSpeedKts: 470, cruiseAltitudeFt: 38000 },
+    REGIONAL: { cruiseSpeedKts: 380, cruiseAltitudeFt: 30000 },
+    TURBOPROP: { cruiseSpeedKts: 270, cruiseAltitudeFt: 22000 },
+    BIZJET: { cruiseSpeedKts: 430, cruiseAltitudeFt: 41000 },
+};
 const MOSCOW_REGION_ID = "moscow_region";
 const DEFAULT_ZONE_RADIUS_KM = 50;
 const MOSCOW_AIRPORT_RADIUS_KM = 35;
@@ -206,6 +214,8 @@ function buildZones() {
 
 const zones = buildZones();
 const zonesById = new Map(zones.map((zone) => [zone.id, zone]));
+const moscowRegionZone = zonesById.get(MOSCOW_REGION_ID) || null;
+const moscowAirportZones = zones.filter((zone) => zone.parentId === MOSCOW_REGION_ID);
 
 function seedFlightsIfEmpty() {
     const existing = readJson(flightsFile, []);
@@ -432,6 +442,353 @@ function interpolateGreatCircle(origin, destination, progress) {
     return [toDegrees(lat), toDegrees(lon)];
 }
 
+function bearingBetween(start, end) {
+    const lat1 = toRadians(start[0]);
+    const lat2 = toRadians(end[0]);
+    const dLon = toRadians(end[1] - start[1]);
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return (toDegrees(Math.atan2(y, x)) + 360) % 360;
+}
+
+function computeRouteDistances(route) {
+    if (!route || route.length < 2) return { totalMeters: 0, cumulativeMeters: [0] };
+    const cumulativeMeters = [0];
+    let totalMeters = 0;
+    for (let i = 1; i < route.length; i += 1) {
+        totalMeters += distanceKm(route[i - 1], route[i]) * 1000;
+        cumulativeMeters.push(totalMeters);
+    }
+    return { totalMeters, cumulativeMeters };
+}
+
+function buildGreatCircleRoute(origin, destination, steps = 60) {
+    if (!origin || !destination) return null;
+    const lat1 = toRadians(origin.lat);
+    const lon1 = toRadians(origin.lon);
+    const lat2 = toRadians(destination.lat);
+    const lon2 = toRadians(destination.lon);
+    const delta = haversineDistance([origin.lat, origin.lon], [destination.lat, destination.lon]);
+    if (!delta || Number.isNaN(delta)) {
+        return [
+            [origin.lat, origin.lon],
+            [destination.lat, destination.lon],
+        ];
+    }
+    const sinDelta = Math.sin(delta);
+    const points = [];
+    const count = Math.max(40, Math.min(80, steps));
+    for (let i = 0; i <= count; i += 1) {
+        const t = i / count;
+        const a = Math.sin((1 - t) * delta) / sinDelta;
+        const b = Math.sin(t * delta) / sinDelta;
+        const x = a * Math.cos(lat1) * Math.cos(lon1) + b * Math.cos(lat2) * Math.cos(lon2);
+        const y = a * Math.cos(lat1) * Math.sin(lon1) + b * Math.cos(lat2) * Math.sin(lon2);
+        const z = a * Math.sin(lat1) + b * Math.sin(lat2);
+        const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+        const lon = Math.atan2(y, x);
+        points.push([toDegrees(lat), toDegrees(lon)]);
+    }
+    return points;
+}
+
+function buildBezierRoute(start, control, end, steps = 12) {
+    const points = [];
+    for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        const mt = 1 - t;
+        const lat = mt * mt * start[0] + 2 * mt * t * control[0] + t * t * end[0];
+        const lon = mt * mt * start[1] + 2 * mt * t * control[1] + t * t * end[1];
+        points.push([lat, lon]);
+    }
+    return points;
+}
+
+function destinationPoint(lat, lon, bearing, distanceKmValue) {
+    const radius = 6371;
+    const delta = distanceKmValue / radius;
+    const theta = toRadians(bearing);
+    const phi1 = toRadians(lat);
+    const lambda1 = toRadians(lon);
+
+    const sinPhi1 = Math.sin(phi1);
+    const cosPhi1 = Math.cos(phi1);
+    const sinDelta = Math.sin(delta);
+    const cosDelta = Math.cos(delta);
+
+    const sinPhi2 = sinPhi1 * cosDelta + cosPhi1 * sinDelta * Math.cos(theta);
+    const phi2 = Math.asin(sinPhi2);
+    const y = Math.sin(theta) * sinDelta * cosPhi1;
+    const x = cosDelta - sinPhi1 * sinPhi2;
+    const lambda2 = lambda1 + Math.atan2(y, x);
+
+    return [toDegrees(phi2), toDegrees(lambda2)];
+}
+
+function buildSegmentedRoute(origin, destination) {
+    const base = buildGreatCircleRoute(origin, destination, 80);
+    if (!base || base.length < 2) return base;
+    const meta = computeRouteDistances(base);
+    const totalKm = meta.totalMeters / 1000;
+    const segmentKm = Math.min(120, Math.max(60, totalKm * 0.12));
+    const startProgress = segmentKm / totalKm;
+    const endProgress = 1 - segmentKm / totalKm;
+    const startInfo = pointAtDistance(base, meta, totalKm * 1000 * startProgress);
+    const endInfo = pointAtDistance(base, meta, totalKm * 1000 * endProgress);
+
+    const bearingStart = bearingBetween(base[0], startInfo.position || base[1]);
+    const bearingEnd = bearingBetween(endInfo.position || base[base.length - 2], base[base.length - 1]);
+    const controlStart = destinationPoint(base[0][0], base[0][1], bearingStart - 40, segmentKm * 0.6);
+    const controlEnd = destinationPoint(
+        base[base.length - 1][0],
+        base[base.length - 1][1],
+        bearingEnd + 40,
+        segmentKm * 0.6
+    );
+
+    const departureArc = buildBezierRoute(base[0], controlStart, startInfo.position, 12);
+    const arrivalArc = buildBezierRoute(endInfo.position, controlEnd, base[base.length - 1], 12);
+
+    const main = base.filter((point, index) => {
+        const progress = index / (base.length - 1);
+        return progress >= startProgress && progress <= endProgress;
+    });
+
+    return [
+        ...departureArc.slice(0, -1),
+        ...main.slice(1, -1),
+        ...arrivalArc,
+    ];
+}
+
+function buildRoute(origin, destination) {
+    const points = buildSegmentedRoute(origin, destination) || [];
+    const meta = computeRouteDistances(points);
+    const totalDistanceM = meta.totalMeters;
+    const tocDistM = totalDistanceM * Math.min(0.15, Math.max(0.1, 0.12));
+    const todDistM = totalDistanceM * Math.min(0.85, Math.max(0.75, 0.82));
+    return {
+        points,
+        totalDistanceM,
+        tocDistM,
+        todDistM,
+        meta,
+    };
+}
+
+function pointAtDistance(routePoints, routeMeta, distanceM) {
+    if (!routePoints || routePoints.length === 0) return { position: null, headingDeg: null };
+    if (!routeMeta || routeMeta.totalMeters === 0) {
+        return {
+            position: routePoints[0],
+            headingDeg: bearingBetween(routePoints[0], routePoints[1] || routePoints[0]),
+        };
+    }
+    const clamped = Math.min(routeMeta.totalMeters, Math.max(0, distanceM));
+    const { cumulativeMeters } = routeMeta;
+    let index = cumulativeMeters.findIndex((value) => value >= clamped);
+    if (index <= 0) {
+        return {
+            position: routePoints[0],
+            headingDeg: bearingBetween(routePoints[0], routePoints[1] || routePoints[0]),
+        };
+    }
+    if (index === -1) {
+        const last = routePoints.length - 1;
+        return {
+            position: routePoints[last],
+            headingDeg: bearingBetween(routePoints[last - 1] || routePoints[last], routePoints[last]),
+        };
+    }
+    const prevDist = cumulativeMeters[index - 1];
+    const nextDist = cumulativeMeters[index];
+    const segmentProgress = (clamped - prevDist) / (nextDist - prevDist || 1);
+    const start = routePoints[index - 1];
+    const end = routePoints[index];
+    const lat = start[0] + (end[0] - start[0]) * segmentProgress;
+    const lon = start[1] + (end[1] - start[1]) * segmentProgress;
+    return {
+        position: [lat, lon],
+        headingDeg: bearingBetween(start, end),
+    };
+}
+
+function getAircraftProfile(flight) {
+    const key = String(flight.aircraftClass || "NARROWBODY").toUpperCase();
+    return AIRCRAFT_PROFILES[key] || AIRCRAFT_PROFILES.NARROWBODY;
+}
+
+function computeProfile(flight, routeInfo, progressM) {
+    const profile = getAircraftProfile(flight);
+    const total = routeInfo.totalDistanceM || 0;
+    if (!total) {
+        return { speedKts: profile.cruiseSpeedKts, altitudeFt: profile.cruiseAltitudeFt };
+    }
+    const climbEnd = routeInfo.tocDistM;
+    const descentStart = routeInfo.todDistM;
+
+    if (progressM <= climbEnd) {
+        const factor = climbEnd ? progressM / climbEnd : 0;
+        return {
+            speedKts: Math.round(profile.cruiseSpeedKts * (0.6 + 0.4 * factor)),
+            altitudeFt: Math.round(profile.cruiseAltitudeFt * factor),
+        };
+    }
+    if (progressM >= descentStart) {
+        const remaining = Math.max(0, total - progressM);
+        const descentRange = Math.max(1, total - descentStart);
+        const factor = remaining / descentRange;
+        return {
+            speedKts: Math.round(profile.cruiseSpeedKts * (0.55 + 0.45 * factor)),
+            altitudeFt: Math.round(profile.cruiseAltitudeFt * factor),
+        };
+    }
+    return {
+        speedKts: profile.cruiseSpeedKts,
+        altitudeFt: profile.cruiseAltitudeFt,
+    };
+}
+
+function getFieldSource(value, existingSource) {
+    if (existingSource === "MANUAL" || existingSource === "AUTO") return existingSource;
+    return Number.isFinite(value) ? "MANUAL" : "AUTO";
+}
+
+function buildEngineState(flight, now) {
+    const origin = airportsByIcao.get(flight.fromIcao);
+    const destination = airportsByIcao.get(flight.toIcao);
+    const routeInfo = origin && destination ? buildRoute(origin, destination) : null;
+    const totalDistanceM = routeInfo?.totalDistanceM || 0;
+    const mode = FLIGHT_MODES.includes(flight.mode)
+        ? flight.mode
+        : now < flight.departureUtc
+        ? "SCHEDULED"
+        : "LIVE";
+
+    let progressM = Number.isFinite(flight.progressM) ? flight.progressM : null;
+    let lastTickMs = Number.isFinite(flight.lastTickMs) ? flight.lastTickMs : now;
+    if (progressM === null && totalDistanceM > 0) {
+        const planned = Math.min(
+            1,
+            Math.max(0, (now - flight.departureUtc) / (flight.arrivalUtc - flight.departureUtc))
+        );
+        progressM = totalDistanceM * planned;
+        lastTickMs = now;
+    }
+
+    let nextMode = mode;
+    if (nextMode === "SCHEDULED" && now >= flight.departureUtc) {
+        nextMode = "LIVE";
+        lastTickMs = now;
+    }
+
+    const profileValues = routeInfo
+        ? computeProfile(flight, routeInfo, progressM || 0)
+        : computeProfile(flight, { totalDistanceM: 0, tocDistM: 0, todDistM: 0 }, 0);
+
+    const source = {
+        speed: getFieldSource(flight.speed, flight.source?.speed),
+        altitude: getFieldSource(flight.altitude, flight.source?.altitude),
+        heading: getFieldSource(flight.target?.headingDeg, flight.source?.heading),
+        phase: flight.source?.phase || "MANUAL",
+    };
+    const target = {
+        speedKts: Number.isFinite(flight.target?.speedKts)
+            ? flight.target.speedKts
+            : Number.isFinite(flight.speed)
+            ? flight.speed
+            : null,
+        altitudeFt: Number.isFinite(flight.target?.altitudeFt)
+            ? flight.target.altitudeFt
+            : Number.isFinite(flight.altitude)
+            ? flight.altitude
+            : null,
+        headingDeg: Number.isFinite(flight.target?.headingDeg) ? flight.target.headingDeg : null,
+    };
+
+    let speedKts = source.speed === "MANUAL" && Number.isFinite(target.speedKts)
+        ? target.speedKts
+        : profileValues.speedKts;
+    let altitudeFt = source.altitude === "MANUAL" && Number.isFinite(target.altitudeFt)
+        ? target.altitudeFt
+        : profileValues.altitudeFt;
+
+    if (nextMode === "SCHEDULED") {
+        speedKts = 0;
+        altitudeFt = 0;
+    }
+
+    if (nextMode === "LIVE" || nextMode === "ESTIMATED") {
+        const dtSec = Math.max(0, (now - lastTickMs) / 1000);
+        const distStepM = speedKts * 0.514444 * dtSec;
+        progressM = Math.min(totalDistanceM, Math.max(0, (progressM || 0) + distStepM));
+        lastTickMs = now;
+        if (totalDistanceM > 0 && progressM >= totalDistanceM) {
+            nextMode = "COMPLETED";
+        }
+    }
+
+    if (nextMode === "COMPLETED") {
+        progressM = totalDistanceM;
+        speedKts = 0;
+    }
+
+    const routeMeta = routeInfo?.meta || { totalMeters: totalDistanceM, cumulativeMeters: [] };
+    const positionData = routeInfo
+        ? pointAtDistance(routeInfo.points, routeMeta, progressM || 0)
+        : { position: null, headingDeg: null };
+    const remainingM = Math.max(0, totalDistanceM - (progressM || 0));
+    const etaMs =
+        speedKts > 5 && nextMode !== "COMPLETED"
+            ? now + (remainingM / (speedKts * 0.514444)) * 1000
+            : null;
+    const currentZone = positionData.position ? determineZoneForPosition(positionData.position) : null;
+    const controlling = positionData.position ? determineControllingZone(positionData.position) : null;
+
+    return {
+        updatedFlight: {
+            ...flight,
+            mode: nextMode,
+            progressM: Number.isFinite(progressM) ? progressM : 0,
+            lastTickMs,
+            aircraftClass: flight.aircraftClass || "NARROWBODY",
+            target,
+            source,
+            currentZoneId: currentZone?.id || null,
+            controllingZoneId: controlling?.zone?.id || null,
+            controlledByControllerId: controlling?.assignment?.userId || null,
+        },
+        engine: {
+            mode: nextMode,
+            phase: flight.phase || FLIGHT_PHASES[0],
+            route: routeInfo
+                ? {
+                      points: routeInfo.points,
+                      totalDistanceM: routeInfo.totalDistanceM,
+                      tocDistM: routeInfo.tocDistM,
+                      todDistM: routeInfo.todDistM,
+                  }
+                : null,
+            progressM: Number.isFinite(progressM) ? progressM : 0,
+            position: positionData.position,
+            headingDeg: Number.isFinite(positionData.headingDeg) ? positionData.headingDeg : null,
+            speedKts,
+            altitudeFt,
+            etaMs,
+            target,
+            source,
+            currentZoneId: currentZone?.id || null,
+            controllingZoneId: controlling?.zone?.id || null,
+            controllingDispatcher: controlling?.assignment
+                ? {
+                      id: controlling.assignment.userId,
+                      username: controlling.assignment.username,
+                  }
+                : null,
+        },
+    };
+}
+
 function isAdmin(user) {
     return user && user.role === "admin";
 }
@@ -506,18 +863,77 @@ function isPositionInZone(position, zone) {
     return distanceKm(position, [zone.lat, zone.lon]) <= zone.radiusKm;
 }
 
+function determineZoneForPosition(position) {
+    if (!position) return null;
+    const airportZone = moscowAirportZones.find((zone) => isPositionInZone(position, zone));
+    if (airportZone) return airportZone;
+    if (moscowRegionZone && isPositionInZone(position, moscowRegionZone)) {
+        return moscowRegionZone;
+    }
+    return (
+        zones.find(
+            (zone) =>
+                zone.id !== MOSCOW_REGION_ID &&
+                !zone.parentId &&
+                isPositionInZone(position, zone)
+        ) || null
+    );
+}
+
+function determineControllingZone(position) {
+    if (!position) return null;
+    const airportZone = moscowAirportZones.find((zone) => isPositionInZone(position, zone));
+    if (airportZone) {
+        const assignment = zoneAssignments.get(airportZone.id);
+        if (assignment) {
+            return { zone: airportZone, assignment };
+        }
+        if (moscowRegionZone) {
+            const regionAssignment = zoneAssignments.get(moscowRegionZone.id);
+            if (regionAssignment) {
+                return { zone: moscowRegionZone, assignment: regionAssignment };
+            }
+        }
+        return null;
+    }
+    if (moscowRegionZone && isPositionInZone(position, moscowRegionZone)) {
+        const regionAssignment = zoneAssignments.get(moscowRegionZone.id);
+        return regionAssignment ? { zone: moscowRegionZone, assignment: regionAssignment } : null;
+    }
+    const generalZone = zones.find(
+        (zone) =>
+            zone.id !== MOSCOW_REGION_ID &&
+            !zone.parentId &&
+            isPositionInZone(position, zone)
+    );
+    if (generalZone) {
+        const assignment = zoneAssignments.get(generalZone.id);
+        return assignment ? { zone: generalZone, assignment } : null;
+    }
+    return null;
+}
+
 function getFlightPosition(flight, now) {
     const origin = airportsByIcao.get(flight.fromIcao);
     const destination = airportsByIcao.get(flight.toIcao);
     if (!origin || !destination) return null;
+    const routeInfo = buildRoute(origin, destination);
     const status = getStatus(flight, now);
-    if (status === "scheduled") return [origin.lat, origin.lon];
-    if (status === "completed") return [destination.lat, destination.lon];
-    const progress = Math.min(
-        1,
-        Math.max(0, (now - flight.departureUtc) / (flight.arrivalUtc - flight.departureUtc))
-    );
-    return interpolateGreatCircle(origin, destination, progress);
+    const totalDistanceM = routeInfo.totalDistanceM || 0;
+    let progressM = Number.isFinite(flight.progressM) ? flight.progressM : null;
+    if (status === "scheduled") {
+        progressM = 0;
+    } else if (status === "completed") {
+        progressM = totalDistanceM;
+    } else if (progressM === null && totalDistanceM > 0) {
+        const planned = Math.min(
+            1,
+            Math.max(0, (now - flight.departureUtc) / (flight.arrivalUtc - flight.departureUtc))
+        );
+        progressM = totalDistanceM * planned;
+    }
+    const point = pointAtDistance(routeInfo.points, routeInfo.meta, progressM || 0);
+    return point.position || [origin.lat, origin.lon];
 }
 
 function canUserManageFlight(user, flight, now) {
@@ -558,14 +974,19 @@ function clearExpiredTransfer(flight, now) {
     return flight;
 }
 
-function buildFlightResponse(flight, now = Date.now()) {
+function buildFlightResponse(flight, now = Date.now(), engine) {
     const origin = airportsByIcao.get(flight.fromIcao);
     const destination = airportsByIcao.get(flight.toIcao);
-    const status = getStatus(flight, now);
-    const progress = Math.min(
-        1,
-        Math.max(0, (now - flight.departureUtc) / (flight.arrivalUtc - flight.departureUtc))
-    );
+    const status = engine?.mode
+        ? engine.mode === "COMPLETED"
+            ? "completed"
+            : engine.mode === "SCHEDULED"
+            ? "scheduled"
+            : "active"
+        : getStatus(flight, now);
+    const progress = engine?.route?.totalDistanceM
+        ? Math.min(1, Math.max(0, (engine.progressM || 0) / engine.route.totalDistanceM))
+        : Math.min(1, Math.max(0, (now - flight.departureUtc) / (flight.arrivalUtc - flight.departureUtc)));
 
     return {
         ...flight,
@@ -588,6 +1009,7 @@ function buildFlightResponse(flight, now = Date.now()) {
         progress,
         origin,
         destination,
+        engine: engine || null,
     };
 }
 
@@ -882,10 +1304,12 @@ app.get("/flights", (req, res) => {
     const now = Date.now();
     const flights = loadFlights();
     const refreshed = flights.map((flight) => clearExpiredTransfer(flight, now));
-    if (JSON.stringify(flights) !== JSON.stringify(refreshed)) {
-        saveFlights(refreshed);
+    const computed = refreshed.map((flight) => buildEngineState(flight, now));
+    const updatedFlights = computed.map((item) => item.updatedFlight);
+    if (JSON.stringify(flights) !== JSON.stringify(updatedFlights)) {
+        saveFlights(updatedFlights);
     }
-    res.json(refreshed.map((flight) => buildFlightResponse(flight, now)));
+    res.json(computed.map((item) => buildFlightResponse(item.updatedFlight, now, item.engine)));
 });
 
 app.post("/flights", requireAuth, (req, res) => {
@@ -900,6 +1324,7 @@ app.post("/flights", requireAuth, (req, res) => {
     const altitude = Number.isFinite(Number(req.body.altitude)) ? Number(req.body.altitude) : null;
     const awaitingAtc = Boolean(req.body.awaitingAtc);
     const priority = normalizePriority(req.body.priority);
+    const aircraftClass = String(req.body.aircraftClass || "NARROWBODY").toUpperCase();
 
     if (!callsign || callsign.length < 3) {
         res.status(400).json({ error: "invalid_callsign" });
@@ -936,6 +1361,21 @@ app.post("/flights", requireAuth, (req, res) => {
         altitude,
         awaitingAtc,
         priority,
+        aircraftClass,
+        mode: now < departureUtc ? "SCHEDULED" : "LIVE",
+        progressM: 0,
+        lastTickMs: now,
+        target: {
+            speedKts: Number.isFinite(speed) ? speed : null,
+            altitudeFt: Number.isFinite(altitude) ? altitude : null,
+            headingDeg: null,
+        },
+        source: {
+            speed: Number.isFinite(speed) ? "MANUAL" : "AUTO",
+            altitude: Number.isFinite(altitude) ? "MANUAL" : "AUTO",
+            heading: "AUTO",
+            phase: "MANUAL",
+        },
         ownerId: req.user.id,
         ownerName: req.user.username,
         isLocked: false,
@@ -1007,6 +1447,9 @@ app.put("/flights/:id", requireAuth, (req, res) => {
     const priority = req.body.priority !== undefined
         ? normalizePriority(req.body.priority)
         : normalizePriority(currentFlight.priority);
+    const aircraftClass = req.body.aircraftClass
+        ? String(req.body.aircraftClass).toUpperCase()
+        : currentFlight.aircraftClass || "NARROWBODY";
 
     if (!callsign || callsign.length < 3) {
         res.status(400).json({ error: "invalid_callsign" });
@@ -1044,6 +1487,17 @@ app.put("/flights/:id", requireAuth, (req, res) => {
         altitude,
         awaitingAtc,
         priority,
+        aircraftClass,
+        target: {
+            ...(currentFlight.target || {}),
+            speedKts: Number.isFinite(speed) ? speed : null,
+            altitudeFt: Number.isFinite(altitude) ? altitude : null,
+        },
+        source: {
+            ...(currentFlight.source || {}),
+            speed: Number.isFinite(speed) ? "MANUAL" : "AUTO",
+            altitude: Number.isFinite(altitude) ? "MANUAL" : "AUTO",
+        },
         ownerId,
         ownerName,
     };

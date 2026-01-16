@@ -118,6 +118,12 @@ function computeProgress(flight, now) {
     return (now - flight.departureUtc) / (flight.arrivalUtc - flight.departureUtc);
 }
 
+function mapEngineModeToStatus(mode) {
+    if (mode === "COMPLETED") return "completed";
+    if (mode === "SCHEDULED") return "scheduled";
+    return "active";
+}
+
 function getPilotMetrics(flight) {
     if (!flight) return { phase: "—", altitude: "—", speed: "—" };
     const phase = flight.phase || formatStatusLabel(flight.status);
@@ -697,11 +703,17 @@ export default function App() {
     const activeFlights = useMemo(() => {
         return flights
             .map((flight) => {
-                const statusValue = computeStatus(flight, now);
+                const statusValue = flight.engine?.mode
+                    ? mapEngineModeToStatus(flight.engine.mode)
+                    : computeStatus(flight, now);
+                const progressValue =
+                    flight.engine?.route?.totalDistanceM && Number.isFinite(flight.engine.progressM)
+                        ? flight.engine.progressM / flight.engine.route.totalDistanceM
+                        : computeProgress(flight, now);
                 return {
                     ...flight,
                     status: statusValue,
-                    progress: computeProgress(flight, now),
+                    progress: progressValue,
                 };
             })
             .filter((flight) => flight.status !== "completed");
@@ -711,36 +723,38 @@ export default function App() {
         return activeFlights
             .filter((flight) => flight.origin && flight.destination)
             .map((flight) => {
-                const route = buildSegmentedRoute(flight.origin, flight.destination);
+                const engine = flight.engine || null;
+                const route =
+                    engine?.route?.points?.length > 1
+                        ? engine.route.points
+                        : buildSegmentedRoute(flight.origin, flight.destination);
                 const routeMeta = computeRouteDistances(route);
+                const progressValue =
+                    engine?.route?.totalDistanceM && Number.isFinite(engine.progressM)
+                        ? engine.progressM / engine.route.totalDistanceM
+                        : flight.progress;
                 const routeInfo =
                     flight.status === "scheduled"
                         ? { position: route?.[0], heading: null, distanceKm: 0 }
-                        : positionOnRoute(route, routeMeta, flight.progress);
+                        : engine?.position
+                        ? { position: engine.position, heading: engine.headingDeg, distanceKm: 0 }
+                        : positionOnRoute(route, routeMeta, progressValue);
+                const displaySpeed = Number.isFinite(engine?.speedKts)
+                    ? engine.speedKts
+                    : flight.speed;
+                const displayAltitude = Number.isFinite(engine?.altitudeFt)
+                    ? engine.altitudeFt
+                    : flight.altitude;
+
                 const totalKm = routeMeta.total * 6371;
-                const distAlong = routeInfo.distanceKm || 0;
-                const distToGo = Math.max(0, totalKm - distAlong);
-
-                const cruiseAltitude = Number.isFinite(flight.altitude) ? flight.altitude : 33000;
-                const cruiseSpeed = Number.isFinite(flight.speed) ? flight.speed : 440;
-                const climbKm = Math.min(200, Math.max(80, totalKm * 0.2));
-                const descentKm = Math.min(140, Math.max(80, totalKm * 0.18));
-                let displayAltitude = cruiseAltitude;
-                let displaySpeed = cruiseSpeed;
-
-                if (distAlong <= climbKm) {
-                    const factor = distAlong / climbKm;
-                    displayAltitude = Math.round(cruiseAltitude * factor);
-                    displaySpeed = Math.round(cruiseSpeed * (0.6 + 0.4 * factor));
-                } else if (distToGo <= descentKm) {
-                    const factor = distToGo / descentKm;
-                    displayAltitude = Math.round(cruiseAltitude * factor);
-                    displaySpeed = Math.round(cruiseSpeed * (0.55 + 0.45 * factor));
-                }
-
-                const todDistanceKm = Math.min(120, Math.max(80, totalKm * 0.12));
-                const todProgress = totalKm > 0 ? (totalKm - todDistanceKm) / totalKm : 0;
-                const todInfo = positionOnRoute(route, routeMeta, todProgress);
+                const fallbackTodDistanceKm = Math.min(120, Math.max(80, totalKm * 0.12));
+                const fallbackTodProgress = totalKm > 0 ? (totalKm - fallbackTodDistanceKm) / totalKm : 0;
+                const todProgress =
+                    engine?.route?.totalDistanceM && Number.isFinite(engine?.route?.todDistM)
+                        ? engine.route.todDistM / engine.route.totalDistanceM
+                        : fallbackTodProgress;
+                const todInfo =
+                    todProgress > 0 ? positionOnRoute(route, routeMeta, todProgress) : { position: null };
 
                 return {
                     id: flight.id,
@@ -749,7 +763,7 @@ export default function App() {
                     to: flight.toIcao,
                     status: flight.status,
                     position: routeInfo.position,
-                    heading: routeInfo.heading,
+                    heading: Number.isFinite(routeInfo.heading) ? routeInfo.heading : 0,
                     route,
                     routeMeta,
                     routeColor: getRouteColor(flight),
@@ -758,9 +772,9 @@ export default function App() {
                     altitude: flight.altitude,
                     displaySpeed,
                     displayAltitude,
-                    todPoint: todInfo.position,
+                    todPoint: todInfo.position || null,
                     awaitingAtc: Boolean(flight.awaitingAtc),
-                    progress: flight.progress,
+                    progress: progressValue,
                     ownerId: flight.ownerId,
                     ownerName: flight.ownerName,
                     priority: flight.priority,
@@ -2240,9 +2254,13 @@ function ATCScreen({
 
     useEffect(() => {
         const now = Date.now();
-        const active = mapFlights.filter(
-            (flight) => flight.position && flight.status === "active" && Number.isFinite(flight.altitude)
-        );
+        const active = mapFlights.filter((flight) => {
+            if (!flight.position || flight.status !== "active") return false;
+            const altitudeValue = Number.isFinite(flight.displayAltitude)
+                ? flight.displayAltitude
+                : flight.altitude;
+            return Number.isFinite(altitudeValue);
+        });
         const alerts = [];
         const state = new Map(conflictStateRef.current);
         const activePairs = new Set();
@@ -2251,10 +2269,16 @@ function ATCScreen({
             for (let j = i + 1; j < active.length; j += 1) {
                 const first = active[i];
                 const second = active[j];
-                if (!Number.isFinite(first.altitude) || !Number.isFinite(second.altitude)) {
+                const firstAlt = Number.isFinite(first.displayAltitude)
+                    ? first.displayAltitude
+                    : first.altitude;
+                const secondAlt = Number.isFinite(second.displayAltitude)
+                    ? second.displayAltitude
+                    : second.altitude;
+                if (!Number.isFinite(firstAlt) || !Number.isFinite(secondAlt)) {
                     continue;
                 }
-                if (Math.abs(first.altitude - second.altitude) >= 1000) {
+                if (Math.abs(firstAlt - secondAlt) >= 1000) {
                     continue;
                 }
                 const dist = distanceKm(first.position, second.position);
