@@ -5,6 +5,7 @@ import {
     CircleMarker,
     MapContainer,
     Marker,
+    Polygon,
     Polyline,
     TileLayer,
     Tooltip,
@@ -431,55 +432,132 @@ function MapClickHandler({ onClear }) {
     return null;
 }
 
-function HeadingRing({ flight }) {
-    if (!flight?.position || !Number.isFinite(flight.heading)) return null;
+function CourseRingOverlay({ flight }) {
+    const map = useMap();
+    if (!flight?.position) return null;
+
+    useEffect(() => {
+        const ringPane = map.getPane("course-ring") || map.createPane("course-ring");
+        ringPane.style.zIndex = 450;
+        const arrowPane = map.getPane("course-arrow") || map.createPane("course-arrow");
+        arrowPane.style.zIndex = 460;
+    }, [map]);
+
     const [lat, lon] = flight.position;
-    const radiusKm = 20;
-    const headingEnd = destinationPoint(lat, lon, flight.heading, radiusKm);
+    const radiusM = 9000;
+    const radiusKm = radiusM / 1000;
+    const ringColor = "rgba(230, 236, 245, 0.6)";
+    const tickColor = "rgba(230, 236, 245, 0.55)";
+    const arrowColor = "rgba(235, 242, 255, 0.95)";
+    const labelOffsetM = 1200;
+    const smallTickM = 420;
+    const mediumTickM = 650;
+    const largeTickM = 1000;
+
+    const computedHeading = useMemo(() => {
+        if (Number.isFinite(flight.heading)) return flight.heading;
+        if (flight.route && flight.route.length > 1) {
+            const last = flight.route[flight.route.length - 1];
+            return bearingBetween(flight.position, last);
+        }
+        return 0;
+    }, [flight]);
+
     const labelIcon = (label) =>
         L.divIcon({
-            className: "heading-ring-label",
+            className: "course-ring-label",
             html: `<span>${label}</span>`,
-            iconSize: [26, 26],
-            iconAnchor: [13, 13],
+            iconSize: [30, 18],
+            iconAnchor: [15, 9],
         });
 
-    const degreeLabels = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+    const ticks = useMemo(() => {
+        const items = [];
+        for (let deg = 0; deg < 360; deg += 5) {
+            let len = smallTickM;
+            if (deg % 30 === 0) {
+                len = largeTickM;
+            } else if (deg % 10 === 0) {
+                len = mediumTickM;
+            }
+            const start = destinationPoint(lat, lon, deg, radiusKm);
+            const end = destinationPoint(lat, lon, deg, (radiusM + len) / 1000);
+            items.push({ deg, start, end });
+        }
+        return items;
+    }, [lat, lon]);
+
+    const labels = useMemo(() => {
+        const items = [];
+        for (let deg = 0; deg < 360; deg += 30) {
+            const label = String(deg).padStart(3, "0");
+            const point = destinationPoint(lat, lon, deg, (radiusM + labelOffsetM) / 1000);
+            items.push({ deg, label, point });
+        }
+        return items;
+    }, [lat, lon]);
+
+    const arrowTip = destinationPoint(lat, lon, computedHeading, radiusKm);
+    const arrowBaseKm = (radiusM - 800) / 1000;
+    const arrowBase = destinationPoint(lat, lon, computedHeading, arrowBaseKm);
+    const arrowLeft = destinationPoint(lat, lon, computedHeading - 7, arrowBaseKm);
+    const arrowRight = destinationPoint(lat, lon, computedHeading + 7, arrowBaseKm);
 
     return (
         <>
             <Circle
                 center={[lat, lon]}
-                radius={radiusKm * 1000}
+                radius={radiusM}
                 pathOptions={{
-                    color: "rgba(255, 211, 77, 0.6)",
+                    color: ringColor,
                     weight: 1,
-                    opacity: 0.8,
+                    opacity: 0.7,
                     fillOpacity: 0,
                 }}
+                pane="course-ring"
             />
+            {ticks.map((tick) => (
+                <Polyline
+                    key={`tick-${tick.deg}`}
+                    positions={[tick.start, tick.end]}
+                    pathOptions={{
+                        color: tickColor,
+                        weight: tick.deg % 30 === 0 ? 2 : 1,
+                        opacity: 0.7,
+                    }}
+                    pane="course-ring"
+                />
+            ))}
+            {labels.map((label) => (
+                <Marker
+                    key={`label-${label.deg}`}
+                    position={label.point}
+                    icon={labelIcon(label.label)}
+                    interactive={false}
+                />
+            ))}
             <Polyline
                 positions={[
                     [lat, lon],
-                    headingEnd,
+                    arrowBase,
                 ]}
                 pathOptions={{
-                    color: "rgba(255, 211, 77, 0.9)",
+                    color: arrowColor,
                     weight: 2,
-                    opacity: 0.9,
+                    opacity: 1,
                 }}
+                pane="course-arrow"
             />
-            {degreeLabels.map((deg) => {
-                const point = destinationPoint(lat, lon, deg, radiusKm);
-                return (
-                    <Marker
-                        key={`deg-${deg}`}
-                        position={point}
-                        icon={labelIcon(deg)}
-                        interactive={false}
-                    />
-                );
-            })}
+            <Polygon
+                positions={[arrowLeft, arrowTip, arrowRight]}
+                pathOptions={{
+                    color: arrowColor,
+                    fillColor: arrowColor,
+                    fillOpacity: 0.95,
+                    weight: 1,
+                }}
+                pane="course-arrow"
+            />
         </>
     );
 }
@@ -852,7 +930,7 @@ export default function App() {
 
     useEffect(() => {
         fetchFlights();
-        const timer = setInterval(fetchFlights, 15000);
+        const timer = setInterval(fetchFlights, 500);
         return () => clearInterval(timer);
     }, [fetchFlights]);
 
@@ -870,7 +948,9 @@ export default function App() {
                     flights={mapFlights}
                     selectedId={pilotRouteId}
                     activeFlight={activePilotRouteFlight}
+                    selectedFlight={selectedPilotFlight}
                     showInfo={showPilotInfo}
+                    onHideInfo={() => setShowPilotInfo(false)}
                     onSelect={(flightId) => {
                         if (!flightId) {
                             setPilotRouteId(null);
@@ -1063,7 +1143,16 @@ export default function App() {
     );
 }
 
-function PilotMap({ flights, selectedId, activeFlight, showInfo, onSelect, onClear }) {
+function PilotMap({
+    flights,
+    selectedId,
+    activeFlight,
+    selectedFlight,
+    showInfo,
+    onHideInfo,
+    onSelect,
+    onClear,
+}) {
     const visibleFlights = flights.filter((flight) => flight.position && flight.route);
 
     return (
@@ -1078,6 +1167,7 @@ function PilotMap({ flights, selectedId, activeFlight, showInfo, onSelect, onCle
             />
             <MapFocus flight={activeFlight} />
             <MapClickHandler onClear={onClear} />
+            <CourseRingOverlay flight={selectedFlight} />
             {activeFlight?.route?.length > 1 && (
                 <>
                     <Marker position={activeFlight.route[0]} icon={mapLabelIcon("DEP")} interactive={false} />
@@ -1113,7 +1203,7 @@ function PilotMap({ flights, selectedId, activeFlight, showInfo, onSelect, onCle
                                 permanent
                                 interactive
                             >
-                                <FlightPopup flight={flight} onClose={onClear} />
+                                <FlightPopup flight={flight} onClose={onHideInfo} />
                             </Tooltip>
                         )}
                     </Marker>
@@ -3177,7 +3267,7 @@ function ATCScreen({
                                 <MapFocus flight={activeRouteFlight} />
                                 <MapFocusPoint point={conflictFocus} />
                                 <MapClickHandler onClear={() => setRouteFlightId(null)} />
-                                <HeadingRing flight={activeRouteFlight} />
+                                <CourseRingOverlay flight={selectedMapFlight} />
                                 {activeRouteFlight?.route?.length > 1 && (
                                     <>
                                         <Marker
@@ -3267,7 +3357,7 @@ function ATCScreen({
                                                     >
                                                         <FlightPopup
                                                             flight={flight}
-                                                            onClose={() => setRouteFlightId(null)}
+                                                            onClose={() => setShowMapInfo(false)}
                                                         />
                                                     </Tooltip>
                                                 )}
