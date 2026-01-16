@@ -33,6 +33,12 @@ function saveLS(key, value) {
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const MSK_OFFSET_MINUTES = 180;
+const TAU_POS = 0.35;
+const TAU_HEADING = 0.2;
+const SNAP_DISTANCE_KM = 50;
+const MAX_STEP_MIN_KM = 0.02;
+const MAX_STEP_SPEED_MULT = 2;
+const DEBUG_MOTION = false;
 const FLIGHT_PHASES = [
     "Подготовка",
     "Запуск двигателей",
@@ -218,6 +224,21 @@ function distanceKm(a, b) {
     return haversineDistance(a, b) * 6371;
 }
 
+function normalizeAngle(value) {
+    const normalized = ((value % 360) + 360) % 360;
+    return normalized;
+}
+
+function shortestAngleDelta(from, to) {
+    const delta = normalizeAngle(to) - normalizeAngle(from);
+    return ((delta + 540) % 360) - 180;
+}
+
+function lerpAngle(from, to, alpha) {
+    const delta = shortestAngleDelta(from, to);
+    return normalizeAngle(from + delta * alpha);
+}
+
 function isPointInZone(position, zone) {
     if (!position || !zone) return false;
     return distanceKm(position, [zone.lat, zone.lon]) <= zone.radiusKm;
@@ -242,6 +263,165 @@ function destinationPoint(lat, lon, bearing, distanceKmValue) {
     const lambda2 = lambda1 + Math.atan2(y, x);
 
     return [toDegrees(phi2), toDegrees(lambda2)];
+}
+
+function useSmoothFlights(flights) {
+    const [visualFlights, setVisualFlights] = useState([]);
+    const stateRef = useRef(new Map());
+    const flightsRef = useRef(flights);
+
+    useEffect(() => {
+        flightsRef.current = flights;
+        const now = Date.now();
+        const seen = new Set();
+        const map = stateRef.current;
+        flights.forEach((flight) => {
+            if (!flight.position) return;
+            const [lat, lon] = flight.position;
+            const heading = Number.isFinite(flight.heading) ? flight.heading : 0;
+            const speed = Number.isFinite(flight.displaySpeed) ? flight.displaySpeed : flight.speed;
+            seen.add(flight.id);
+            const existing = map.get(flight.id);
+            if (!existing) {
+                map.set(flight.id, {
+                    visualLat: lat,
+                    visualLng: lon,
+                    visualHeading: heading,
+                    targetLat: lat,
+                    targetLng: lon,
+                    targetHeading: heading,
+                    authLat: lat,
+                    authLng: lon,
+                    authHeading: heading,
+                    authSpeed: Number.isFinite(speed) ? speed : 0,
+                    authUpdatedAt: now,
+                });
+                return;
+            }
+            map.set(flight.id, {
+                ...existing,
+                targetLat: lat,
+                targetLng: lon,
+                targetHeading: heading,
+                authLat: lat,
+                authLng: lon,
+                authHeading: heading,
+                authSpeed: Number.isFinite(speed) ? speed : existing.authSpeed || 0,
+                authUpdatedAt: now,
+            });
+        });
+        for (const id of map.keys()) {
+            if (!seen.has(id)) {
+                map.delete(id);
+            }
+        }
+    }, [flights]);
+
+    useEffect(() => {
+        let rafId;
+        let lastTs;
+        const step = (ts) => {
+            if (!lastTs) lastTs = ts;
+            const dtSec = Math.max(0, (ts - lastTs) / 1000);
+            lastTs = ts;
+            const nowMs = Date.now();
+            const map = stateRef.current;
+            const currentFlights = flightsRef.current;
+            const visuals = currentFlights.map((flight) => {
+                const state = map.get(flight.id);
+                if (!state || !flight.position) return flight;
+
+                const dtSinceAuth = Math.max(0, nowMs - state.authUpdatedAt) / 1000;
+                let targetLat = state.targetLat;
+                let targetLng = state.targetLng;
+                const targetHeading = Number.isFinite(state.targetHeading)
+                    ? state.targetHeading
+                    : state.visualHeading;
+
+                if (Number.isFinite(state.authSpeed) && dtSinceAuth > 0) {
+                    const distanceStepKm =
+                        (state.authSpeed * 0.514444 * dtSinceAuth) / 1000;
+                    const predicted = destinationPoint(
+                        state.authLat,
+                        state.authLng,
+                        state.authHeading ?? targetHeading,
+                        distanceStepKm
+                    );
+                    if (predicted) {
+                        targetLat = predicted[0];
+                        targetLng = predicted[1];
+                    }
+                }
+
+                const errorKm = distanceKm(
+                    [state.visualLat, state.visualLng],
+                    [targetLat, targetLng]
+                );
+                let nextLat = state.visualLat;
+                let nextLng = state.visualLng;
+                let nextHeading = state.visualHeading;
+
+                if (errorKm > SNAP_DISTANCE_KM) {
+                    nextLat = targetLat;
+                    nextLng = targetLng;
+                    nextHeading = targetHeading;
+                    if (DEBUG_MOTION) {
+                        console.debug("motion snap", flight.callsign, errorKm);
+                    }
+                } else {
+                    const alphaPos = 1 - Math.exp(-dtSec / TAU_POS);
+                    const alphaHeading = 1 - Math.exp(-dtSec / TAU_HEADING);
+                    const rawLat = state.visualLat + (targetLat - state.visualLat) * alphaPos;
+                    const rawLng = state.visualLng + (targetLng - state.visualLng) * alphaPos;
+                    const stepKm = distanceKm(
+                        [state.visualLat, state.visualLng],
+                        [rawLat, rawLng]
+                    );
+                    const maxStepKm = Math.max(
+                        MAX_STEP_MIN_KM,
+                        ((state.authSpeed || 0) * 0.514444 * dtSec) / 1000 * MAX_STEP_SPEED_MULT
+                    );
+                    if (stepKm > maxStepKm) {
+                        const bearing = bearingBetween(
+                            [state.visualLat, state.visualLng],
+                            [targetLat, targetLng]
+                        );
+                        const adjusted = destinationPoint(
+                            state.visualLat,
+                            state.visualLng,
+                            bearing,
+                            maxStepKm
+                        );
+                        nextLat = adjusted[0];
+                        nextLng = adjusted[1];
+                    } else {
+                        nextLat = rawLat;
+                        nextLng = rawLng;
+                    }
+                    nextHeading = lerpAngle(state.visualHeading, targetHeading, alphaHeading);
+                }
+
+                map.set(flight.id, {
+                    ...state,
+                    visualLat: nextLat,
+                    visualLng: nextLng,
+                    visualHeading: nextHeading,
+                });
+
+                return {
+                    ...flight,
+                    position: [nextLat, nextLng],
+                    heading: nextHeading,
+                };
+            });
+            setVisualFlights(visuals);
+            rafId = requestAnimationFrame(step);
+        };
+        rafId = requestAnimationFrame(step);
+        return () => cancelAnimationFrame(rafId);
+    }, []);
+
+    return visualFlights;
 }
 
 function buildGreatCircleRoute(origin, destination, steps = 60) {
@@ -433,15 +613,7 @@ function MapClickHandler({ onClear }) {
 }
 
 function CourseRingOverlay({ flight }) {
-    const map = useMap();
     if (!flight?.position) return null;
-
-    useEffect(() => {
-        const ringPane = map.getPane("course-ring") || map.createPane("course-ring");
-        ringPane.style.zIndex = 450;
-        const arrowPane = map.getPane("course-arrow") || map.createPane("course-arrow");
-        arrowPane.style.zIndex = 460;
-    }, [map]);
 
     const [lat, lon] = flight.position;
     const radiusM = 9000;
@@ -514,7 +686,6 @@ function CourseRingOverlay({ flight }) {
                     opacity: 0.7,
                     fillOpacity: 0,
                 }}
-                pane="course-ring"
             />
             {ticks.map((tick) => (
                 <Polyline
@@ -525,7 +696,6 @@ function CourseRingOverlay({ flight }) {
                         weight: tick.deg % 30 === 0 ? 2 : 1,
                         opacity: 0.7,
                     }}
-                    pane="course-ring"
                 />
             ))}
             {labels.map((label) => (
@@ -546,7 +716,6 @@ function CourseRingOverlay({ flight }) {
                     weight: 2,
                     opacity: 1,
                 }}
-                pane="course-arrow"
             />
             <Polygon
                 positions={[arrowLeft, arrowTip, arrowRight]}
@@ -556,7 +725,6 @@ function CourseRingOverlay({ flight }) {
                     fillOpacity: 0.95,
                     weight: 1,
                 }}
-                pane="course-arrow"
             />
         </>
     );
@@ -1153,7 +1321,15 @@ function PilotMap({
     onSelect,
     onClear,
 }) {
-    const visibleFlights = flights.filter((flight) => flight.position && flight.route);
+    const visualFlights = useSmoothFlights(flights);
+    const displayFlights = visualFlights.length ? visualFlights : flights;
+    const visibleFlights = displayFlights.filter((flight) => flight.position && flight.route);
+    const selectedVisualFlight =
+        displayFlights.find((flight) => flight.id === selectedId) || selectedFlight || null;
+    const activeVisualFlight =
+        (activeFlight?.id &&
+            (displayFlights.find((flight) => flight.id === activeFlight.id) || activeFlight)) ||
+        null;
 
     return (
         <MapContainer
@@ -1165,19 +1341,27 @@ function PilotMap({
                 url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
             />
-            <MapFocus flight={activeFlight} />
+            <MapFocus flight={activeVisualFlight} />
             <MapClickHandler onClear={onClear} />
-            <CourseRingOverlay flight={selectedFlight} />
-            {activeFlight?.route?.length > 1 && (
+            <CourseRingOverlay flight={selectedVisualFlight} />
+            {activeVisualFlight?.route?.length > 1 && (
                 <>
-                    <Marker position={activeFlight.route[0]} icon={mapLabelIcon("DEP")} interactive={false} />
                     <Marker
-                        position={activeFlight.route[activeFlight.route.length - 1]}
+                        position={activeVisualFlight.route[0]}
+                        icon={mapLabelIcon("DEP")}
+                        interactive={false}
+                    />
+                    <Marker
+                        position={activeVisualFlight.route[activeVisualFlight.route.length - 1]}
                         icon={mapLabelIcon("ARR")}
                         interactive={false}
                     />
-                    {activeFlight.todPoint && (
-                        <Marker position={activeFlight.todPoint} icon={mapLabelIcon("TOD")} interactive={false}>
+                    {activeVisualFlight.todPoint && (
+                        <Marker
+                            position={activeVisualFlight.todPoint}
+                            icon={mapLabelIcon("TOD")}
+                            interactive={false}
+                        >
                             <Tooltip direction="top" offset={[0, -6]} opacity={0.9}>
                                 TOD — начало снижения
                             </Tooltip>
@@ -1232,6 +1416,161 @@ function PilotMap({
                     />,
                     marker,
                 ];
+            })}
+        </MapContainer>
+    );
+}
+
+function ATCMapCanvas({
+    mapFlights,
+    zones,
+    routeFlightId,
+    selectedFlightId,
+    showMapInfo,
+    conflictFlights,
+    conflictFocus,
+    onSelectFlight,
+    onToggleRoute,
+    onClearRoute,
+    onCloseInfo,
+    getZoneStyle,
+    getZoneTower,
+}) {
+    const visualFlights = useSmoothFlights(mapFlights);
+    const displayFlights = visualFlights.length ? visualFlights : mapFlights;
+    const getFlightById = (id) => displayFlights.find((flight) => flight.id === id) || null;
+    const activeRouteFlight = routeFlightId ? getFlightById(routeFlightId) : null;
+    const selectedMapFlight = selectedFlightId ? getFlightById(selectedFlightId) : null;
+    const visibleFlights = displayFlights.filter((flight) => flight.position && flight.route);
+
+    return (
+        <MapContainer
+            center={[25.2048, 55.2708]}
+            zoom={5}
+            style={{ width: "100%", height: "100%", zIndex: 0 }}
+        >
+            <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+            />
+            <MapFocus flight={activeRouteFlight} />
+            <MapFocusPoint point={conflictFocus} />
+            <MapClickHandler onClear={onClearRoute} />
+            <CourseRingOverlay flight={selectedMapFlight} />
+            {activeRouteFlight?.route?.length > 1 && (
+                <>
+                    <Marker
+                        position={activeRouteFlight.route[0]}
+                        icon={mapLabelIcon("DEP")}
+                        interactive={false}
+                    />
+                    <Marker
+                        position={activeRouteFlight.route[activeRouteFlight.route.length - 1]}
+                        icon={mapLabelIcon("ARR")}
+                        interactive={false}
+                    />
+                    {activeRouteFlight.todPoint && (
+                        <Marker position={activeRouteFlight.todPoint} icon={mapLabelIcon("TOD")} interactive={false}>
+                            <Tooltip direction="top" offset={[0, -6]} opacity={0.9}>
+                                TOD — начало снижения
+                            </Tooltip>
+                        </Marker>
+                    )}
+                </>
+            )}
+            {(zones || []).flatMap((zone) => [
+                <Circle
+                    key={`${zone.id}-circle`}
+                    center={[zone.lat, zone.lon]}
+                    radius={zone.radiusKm * 1000}
+                    pathOptions={getZoneStyle(zone)}
+                />,
+                <Marker key={`${zone.id}-tower`} position={[zone.lat, zone.lon]} icon={getZoneTower(zone)}>
+                    <Tooltip direction="top" offset={[0, -8]} opacity={0.95} interactive>
+                        <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                            <div style={{ fontWeight: 800 }}>{zone.name}</div>
+                            <div>
+                                Статус:{" "}
+                                {zone.dispatcher ? `онлайн (${zone.dispatcher.username})` : "свободна"}
+                            </div>
+                            <div>
+                                Тип:{" "}
+                                {zone.type === "moscow_region"
+                                    ? "регион"
+                                    : zone.type === "moscow_airport"
+                                    ? "аэропорт"
+                                    : "зона"}
+                            </div>
+                        </div>
+                    </Tooltip>
+                </Marker>,
+            ])}
+            {visibleFlights.flatMap((flight) => {
+                const isSelected = flight.id === routeFlightId;
+                const isConflict = conflictFlights.includes(flight.id);
+                const baseColor = flight.routeColor || getRadarColor(flight.status);
+                const mainColor = isSelected ? "#ffd37a" : baseColor;
+                const marker = (
+                    <Marker
+                        key={`${flight.id}-marker`}
+                        position={flight.position}
+                        icon={getPlaneIcon(flight.heading)}
+                        eventHandlers={{
+                            click: () => {
+                                onSelectFlight(flight.id);
+                                onToggleRoute(flight.id);
+                            },
+                        }}
+                    >
+                        {isSelected && showMapInfo && (
+                            <Tooltip direction="top" offset={[0, -14]} opacity={1} permanent interactive>
+                                <FlightPopup flight={flight} onClose={onCloseInfo} />
+                            </Tooltip>
+                        )}
+                    </Marker>
+                );
+
+                const conflictRing = isConflict ? (
+                    <CircleMarker
+                        key={`${flight.id}-conflict`}
+                        center={flight.position}
+                        radius={14}
+                        pathOptions={{
+                            color: "rgba(255, 90, 90, 0.9)",
+                            weight: 2,
+                            fillColor: "rgba(255, 90, 90, 0.2)",
+                            fillOpacity: 0.4,
+                        }}
+                    />
+                ) : null;
+
+                if (!isSelected) {
+                    return [conflictRing, marker].filter(Boolean);
+                }
+                return [
+                    conflictRing,
+                    <Polyline
+                        key={`${flight.id}-route-glow`}
+                        positions={flight.route}
+                        pathOptions={{
+                            color: mainColor,
+                            weight: isSelected ? 7 : 6,
+                            opacity: isSelected ? 0.2 : 0.12,
+                            lineCap: "round",
+                        }}
+                    />,
+                    <Polyline
+                        key={`${flight.id}-route`}
+                        positions={flight.route}
+                        pathOptions={{
+                            color: mainColor,
+                            weight: isSelected ? 3 : 2,
+                            opacity: 0.9,
+                            lineCap: "round",
+                        }}
+                    />,
+                    marker,
+                ].filter(Boolean);
             })}
         </MapContainer>
     );
@@ -1346,7 +1685,16 @@ function PilotSidebar({ flights, selectedId, activeRouteId, showInfo, onToggleIn
                     color: "var(--atc-text)",
                 }}
             />
-            <div style={{ minHeight: 0, overflow: "auto", display: "grid", gap: 6 }}>
+            <div
+                style={{
+                    minHeight: 0,
+                    overflow: "auto",
+                    display: "grid",
+                    gap: 6,
+                    alignContent: "start",
+                    gridAutoRows: "min-content",
+                }}
+            >
                 {visibleFlights.length === 0 ? (
                     <div style={{ fontSize: 11, opacity: 0.7 }}>Нет рейсов.</div>
                 ) : (
@@ -1362,7 +1710,9 @@ function PilotSidebar({ flights, selectedId, activeRouteId, showInfo, onToggleIn
                                     border: "1px solid var(--atc-border)",
                                     borderRadius: 10,
                                     padding: "8px 8px",
-                                    minHeight: 60,
+                                    minHeight: 56,
+                                    height: "auto",
+                                    alignSelf: "start",
                                     background: isActive
                                         ? "rgba(74, 99, 255, 0.92)"
                                         : "rgba(18, 24, 36, 0.9)",
@@ -2087,6 +2437,16 @@ function ATCScreen({
         cursor: "pointer",
         fontWeight: 700,
         fontSize: 12,
+        lineHeight: "16px",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        minWidth: 0,
+        maxWidth: "100%",
         background:
             tone === "danger"
                 ? "rgba(140, 40, 40, 0.65)"
@@ -2298,11 +2658,6 @@ function ATCScreen({
 
     const selectedFlight =
         filteredFlights.find((flight) => flight.id === selectedFlightId) || filteredFlights[0] || null;
-
-    const activeRouteFlight = useMemo(() => {
-        if (!routeFlightId) return null;
-        return mapFlights.find((flight) => flight.id === routeFlightId) || null;
-    }, [mapFlights, routeFlightId]);
 
     const selectedMapFlight = useMemo(() => {
         if (!selectedFlightId) return null;
@@ -3255,158 +3610,23 @@ function ATCScreen({
                                 zIndex: 1,
                             }}
                         >
-                            <MapContainer
-                                center={[25.2048, 55.2708]}
-                                zoom={5}
-                                style={{ width: "100%", height: "100%", zIndex: 0 }}
-                            >
-                                <TileLayer
-                                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-                                />
-                                <MapFocus flight={activeRouteFlight} />
-                                <MapFocusPoint point={conflictFocus} />
-                                <MapClickHandler onClear={() => setRouteFlightId(null)} />
-                                <CourseRingOverlay flight={selectedMapFlight} />
-                                {activeRouteFlight?.route?.length > 1 && (
-                                    <>
-                                        <Marker
-                                            position={activeRouteFlight.route[0]}
-                                            icon={mapLabelIcon("DEP")}
-                                            interactive={false}
-                                        />
-                                        <Marker
-                                            position={activeRouteFlight.route[activeRouteFlight.route.length - 1]}
-                                            icon={mapLabelIcon("ARR")}
-                                            interactive={false}
-                                        />
-                                        {activeRouteFlight.todPoint && (
-                                            <Marker
-                                                position={activeRouteFlight.todPoint}
-                                                icon={mapLabelIcon("TOD")}
-                                                interactive={false}
-                                            >
-                                                <Tooltip direction="top" offset={[0, -6]} opacity={0.9}>
-                                                    TOD — начало снижения
-                                                </Tooltip>
-                                            </Marker>
-                                        )}
-                                    </>
-                                )}
-                                {(zones || []).flatMap((zone) => [
-                                    <Circle
-                                        key={`${zone.id}-circle`}
-                                        center={[zone.lat, zone.lon]}
-                                        radius={zone.radiusKm * 1000}
-                                        pathOptions={getZoneStyle(zone)}
-                                    />,
-                                    <Marker
-                                        key={`${zone.id}-tower`}
-                                        position={[zone.lat, zone.lon]}
-                                        icon={getZoneTower(zone)}
-                                    >
-                                        <Tooltip direction="top" offset={[0, -8]} opacity={0.95} interactive>
-                                            <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
-                                                <div style={{ fontWeight: 800 }}>{zone.name}</div>
-                                                <div>
-                                                    Статус:{" "}
-                                                    {zone.dispatcher
-                                                        ? `онлайн (${zone.dispatcher.username})`
-                                                        : "свободна"}
-                                                </div>
-                                                <div>
-                                                    Тип:{" "}
-                                                    {zone.type === "moscow_region"
-                                                        ? "регион"
-                                                        : zone.type === "moscow_airport"
-                                                        ? "аэропорт"
-                                                        : "зона"}
-                                                </div>
-                                            </div>
-                                        </Tooltip>
-                                    </Marker>,
-                                ])}
-                                {mapFlights
-                                    .filter((flight) => flight.position && flight.route)
-                                    .flatMap((flight) => {
-                                        const isSelected = flight.id === routeFlightId;
-                                        const isConflict = conflictFlights.includes(flight.id);
-                                        const baseColor = flight.routeColor || getRadarColor(flight.status);
-                                        const mainColor = isSelected ? "#ffd37a" : baseColor;
-                                        const marker = (
-                                            <Marker
-                                                key={`${flight.id}-marker`}
-                                                position={flight.position}
-                                                icon={getPlaneIcon(flight.heading)}
-                                                eventHandlers={{
-                                                    click: () => {
-                                                        setSelectedFlightId(flight.id);
-                                                        setRouteFlightId((current) =>
-                                                            current === flight.id ? null : flight.id
-                                                        );
-                                                    },
-                                                }}
-                                            >
-                                                {isSelected && showMapInfo && (
-                                                    <Tooltip
-                                                        direction="top"
-                                                        offset={[0, -14]}
-                                                        opacity={1}
-                                                        permanent
-                                                        interactive
-                                                    >
-                                                        <FlightPopup
-                                                            flight={flight}
-                                                            onClose={() => setShowMapInfo(false)}
-                                                        />
-                                                    </Tooltip>
-                                                )}
-                                            </Marker>
-                                        );
-
-                                        const conflictRing = isConflict ? (
-                                            <CircleMarker
-                                                key={`${flight.id}-conflict`}
-                                                center={flight.position}
-                                                radius={14}
-                                                pathOptions={{
-                                                    color: "rgba(255, 90, 90, 0.9)",
-                                                    weight: 2,
-                                                    fillColor: "rgba(255, 90, 90, 0.2)",
-                                                    fillOpacity: 0.4,
-                                                }}
-                                            />
-                                        ) : null;
-
-                                        if (!isSelected) {
-                                            return [conflictRing, marker].filter(Boolean);
-                                        }
-                                        return [
-                                            conflictRing,
-                                            <Polyline
-                                                key={`${flight.id}-route-glow`}
-                                                positions={flight.route}
-                                                pathOptions={{
-                                                    color: mainColor,
-                                                    weight: isSelected ? 7 : 6,
-                                                    opacity: isSelected ? 0.2 : 0.12,
-                                                    lineCap: "round",
-                                                }}
-                                            />,
-                                            <Polyline
-                                                key={`${flight.id}-route`}
-                                                positions={flight.route}
-                                                pathOptions={{
-                                                    color: mainColor,
-                                                    weight: isSelected ? 3 : 2,
-                                                    opacity: 0.9,
-                                                    lineCap: "round",
-                                                }}
-                                            />,
-                                            marker,
-                                        ].filter(Boolean);
-                                    })}
-                            </MapContainer>
+                            <ATCMapCanvas
+                                mapFlights={mapFlights}
+                                zones={zones}
+                                routeFlightId={routeFlightId}
+                                selectedFlightId={selectedFlightId}
+                                showMapInfo={showMapInfo}
+                                conflictFlights={conflictFlights}
+                                conflictFocus={conflictFocus}
+                                onSelectFlight={setSelectedFlightId}
+                                onToggleRoute={(flightId) =>
+                                    setRouteFlightId((current) => (current === flightId ? null : flightId))
+                                }
+                                onClearRoute={() => setRouteFlightId(null)}
+                                onCloseInfo={() => setShowMapInfo(false)}
+                                getZoneStyle={getZoneStyle}
+                                getZoneTower={getZoneTower}
+                            />
                         </div>
                     </div>
 
